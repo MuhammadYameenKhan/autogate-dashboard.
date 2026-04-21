@@ -20,6 +20,7 @@ interface LogsApiResponse {
 const LogsViewer = () => {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [filters, setFilters] = useState({
     search: '',
     eventType: 'all' as 'all' | 'entry' | 'exit',
@@ -51,9 +52,25 @@ const LogsViewer = () => {
     }
   }
 
-  const handleExport = () => {
-    // Export functionality
-    console.log('Exporting logs...')
+  const handleExport = async () => {
+    try {
+      setExporting(true)
+      const exportData = await apiService.exportLogs()
+      const blob = exportData instanceof Blob ? exportData : new Blob([exportData], { type: 'text/csv' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `parking_logs_${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error exporting logs:', error)
+      alert('Failed to export logs. Please try again.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const safeLogs = Array.isArray(logs) ? logs : []
@@ -136,9 +153,9 @@ const LogsViewer = () => {
             />
           </div>
 
-          <button className="export-btn" onClick={handleExport}>
+          <button className="export-btn" onClick={handleExport} disabled={exporting}>
             <Download size={18} />
-            Export
+            {exporting ? 'Exporting...' : 'Export'}
           </button>
         </div>
       </div>
