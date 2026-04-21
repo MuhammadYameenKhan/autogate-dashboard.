@@ -13,6 +13,10 @@ interface LogEntry {
   duration?: string
 }
 
+interface LogsApiResponse {
+  logs?: LogEntry[]
+}
+
 const LogsViewer = () => {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -31,10 +35,18 @@ const LogsViewer = () => {
   const fetchLogs = async () => {
     try {
       const data = await apiService.getLogs(filters)
-      setLogs(data)
+      if (Array.isArray(data)) {
+        setLogs(data)
+      } else if (Array.isArray((data as LogsApiResponse)?.logs)) {
+        setLogs((data as LogsApiResponse).logs ?? [])
+      } else {
+        console.warn('Unexpected logs response shape:', data)
+        setLogs([])
+      }
       setLoading(false)
     } catch (error) {
       console.error('Error fetching logs:', error)
+      setLogs([])
       setLoading(false)
     }
   }
@@ -44,7 +56,9 @@ const LogsViewer = () => {
     console.log('Exporting logs...')
   }
 
-  const filteredLogs = logs.filter(log => {
+  const safeLogs = Array.isArray(logs) ? logs : []
+
+  const filteredLogs = safeLogs.filter(log => {
     if (filters.search && !log.plateNumber.toLowerCase().includes(filters.search.toLowerCase())) {
       return false
     }

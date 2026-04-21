@@ -2,6 +2,37 @@ import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
 
+export interface LogEntry {
+  id: string
+  plateNumber: string
+  eventType: 'entry' | 'exit'
+  timestamp: string
+  gateId: string
+  status: 'success' | 'failed'
+  duration?: string
+}
+
+export interface GetLogsResponse {
+  logs: LogEntry[]
+  total: number
+  page: number
+  perPage: number
+  pages: number
+}
+
+export interface ParkedVehicle {
+  plateNumber: string
+  ownerName: string
+  department: string
+  entryTime: string
+  duration: string
+}
+
+export interface GetCurrentlyParkedResponse {
+  vehicles: ParkedVehicle[]
+  total: number
+}
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -48,7 +79,7 @@ export const apiService = {
   },
 
   // Currently Parked
-  getCurrentlyParked: async () => {
+  getCurrentlyParked: async (): Promise<GetCurrentlyParkedResponse> => {
     return apiClient.get('/parking/currently-parked')
   },
 
@@ -59,7 +90,7 @@ export const apiService = {
     dateFrom?: string
     dateTo?: string
     status?: string
-  }) => {
+  }): Promise<GetLogsResponse> => {
     return apiClient.get('/logs', { params: filters })
   },
 

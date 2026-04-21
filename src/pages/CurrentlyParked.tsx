@@ -11,6 +11,10 @@ interface ParkedVehicle {
   duration: string
 }
 
+interface CurrentlyParkedApiResponse {
+  vehicles?: ParkedVehicle[]
+}
+
 const CurrentlyParked = () => {
   const [vehicles, setVehicles] = useState<ParkedVehicle[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,15 +30,25 @@ const CurrentlyParked = () => {
   const fetchCurrentlyParked = async () => {
     try {
       const data = await apiService.getCurrentlyParked()
-      setVehicles(data)
+      if (Array.isArray(data)) {
+        setVehicles(data)
+      } else if (Array.isArray((data as CurrentlyParkedApiResponse)?.vehicles)) {
+        setVehicles((data as CurrentlyParkedApiResponse).vehicles ?? [])
+      } else {
+        console.warn('Unexpected currently parked response shape:', data)
+        setVehicles([])
+      }
       setLoading(false)
     } catch (error) {
       console.error('Error fetching currently parked vehicles:', error)
+      setVehicles([])
       setLoading(false)
     }
   }
 
-  const filteredVehicles = vehicles.filter(vehicle =>
+  const safeVehicles = Array.isArray(vehicles) ? vehicles : []
+
+  const filteredVehicles = safeVehicles.filter(vehicle =>
     vehicle.plateNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
     vehicle.ownerName.toLowerCase().includes(searchTerm.toLowerCase())
   )
