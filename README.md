@@ -106,6 +106,11 @@ The dashboard expects a Flask backend API running on `http://localhost:5000/api`
 - `GET /api/dashboard/stats` - Dashboard statistics
 - `GET /api/parking/availability` - Parking availability data
 - `GET /api/parking/currently-parked` - Currently parked vehicles
+- `GET /api/parking/slots/available?date=&time=` - Available slots for booking
+- `GET /api/parking/suggested?date=&time=` - Suggested slot from timetable
+- `POST /api/parking/book` - Create slot booking
+- `GET /api/parking/bookings/my` - Current user bookings
+- `POST /api/parking/bookings/:id/cancel` - Cancel booking
 - `GET /api/logs` - Entry/exit logs with filtering
 - `GET /api/vehicles` - Vehicle list
 - `POST /api/vehicles` - Create vehicle
@@ -116,12 +121,16 @@ The dashboard expects a Flask backend API running on `http://localhost:5000/api`
 - `POST /api/anomalies/:id/resolve` - Resolve anomaly
 - `POST /api/anomalies/:id/false-positive` - Mark as false positive
 - `POST /api/ocr/offline` - Upload offline image for OCR
-- `POST /api/chatbot/message` - Send message to chatbot
+- `POST /api/chatbot/message` - Send message to chatbot (returns `responses[]` and `message`)
 - `POST /api/gate/emergency-stop` - Activate emergency stop
 - `POST /api/gate/reset-emergency-stop` - Reset emergency stop
 - `GET /api/camera/feed` - Get live camera feed (image stream)
 - `POST /api/auth/login` - User login
 - `POST /api/auth/signup` - User registration
+- `POST /api/timetable/extract` - Extract classes from timetable image
+- `POST /api/timetable/save` - Save extracted timetable
+- `PUT /api/timetable/update` - Update saved timetable
+- `GET /api/timetable/my` - Get current user timetable
 
 ## Features Overview
 

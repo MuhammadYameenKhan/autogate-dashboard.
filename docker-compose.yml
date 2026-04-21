@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: autogate_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Flask Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/autogate_dev
+      LPR_SERVICE_URL: http://lpr:5001
+      RASA_SERVER_URL: http://rasa:5005
+      GATE_HOST: barrier
+      GATE_PORT: 9999
+      SECRET_KEY: dev-secret-key
+      JWT_SECRET_KEY: dev-jwt-secret
+      TOTAL_PARKING_SPOTS: 100
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads:/tmp/autogate_uploads
+
+  # ── LPR Service ────────────────────────────────────────────────────────────
+  lpr:
+    build:
+      context: ./lpr_service
+      dockerfile: Dockerfile.lpr
+    restart: unless-stopped
+    environment:
+      BACKEND_EVENT_URL: http://backend:5000/api/parking/event
+      CAMERA_SOURCE: "0"
+      LPR_PORT: 5001
+    ports:
+      - "5001:5001"
+    volumes:
+      - uploads:/tmp/lpr_uploads
+    devices:
+      - /dev/video0:/dev/video0   # webcam (remove if using IP camera)
+
+  # ── Rasa Action Server ─────────────────────────────────────────────────────
+  rasa-actions:
+    build:
+      context: ./rasa_chatbot
+      dockerfile: Dockerfile.rasa
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://backend:5000/api
+    ports:
+      - "5055:5055"
+    command: ["rasa", "run", "actions", "--port", "5055"]
+
+volumes:
+  pgdata:
+  uploads:

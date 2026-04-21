@@ -1,0 +1,56 @@
+version: "3.1"
+
+intents:
+  - greet
+  - goodbye
+  - ask_availability
+  - ask_vehicle_status
+  - ask_entry_exit
+  - ask_daily_summary
+  - ask_help
+  - out_of_scope
+
+entities:
+  - plate_number
+  - date
+
+slots:
+  plate_number:
+    type: text
+    mappings:
+      - type: from_entity
+        entity: plate_number
+
+responses:
+  utter_greet:
+    - text: "Hello! I'm the AutoGate parking assistant. How can I help you today?"
+    - text: "Hi there! Ask me anything about campus parking."
+
+  utter_goodbye:
+    - text: "Goodbye! Stay safe."
+
+  utter_help:
+    - text: |
+        I can help you with:
+        • Current parking availability
+        • Vehicle entry/exit status
+        • Daily parking summary
+        • Specific plate number queries
+        
+        Just ask naturally, e.g. "How many spots are free?" or "When did ABC-123 enter?"
+
+  utter_out_of_scope:
+    - text: "I'm only able to help with parking-related queries. Please ask about parking availability or vehicle status."
+
+  utter_ask_plate:
+    - text: "Could you provide the plate number?"
+
+actions:
+  - action_get_availability
+  - action_get_vehicle_status
+  - action_get_daily_summary
+  - action_get_entry_exit
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: false
