@@ -94,6 +94,15 @@ export const apiService = {
     return apiClient.get('/logs', { params: filters })
   },
 
+  exportLogs: async (): Promise<Blob | string> => {
+    return apiClient.get('/logs/export', {
+      responseType: 'blob',
+      headers: {
+        Accept: 'text/csv',
+      },
+    })
+  },
+
   // Vehicle Management
   getVehicles: async () => {
     return apiClient.get('/vehicles')

@@ -1,0 +1,75 @@
+version: "3.1"
+
+nlu:
+  - intent: greet
+    examples: |
+      - hi
+      - hello
+      - hey
+      - good morning
+      - good afternoon
+      - what's up
+      - howdy
+
+  - intent: goodbye
+    examples: |
+      - bye
+      - goodbye
+      - see you
+      - thanks bye
+      - that's all
+      - exit
+
+  - intent: ask_availability
+    examples: |
+      - how many parking spots are available?
+      - is there parking available?
+      - how many free spots?
+      - what's the parking occupancy?
+      - is the parking lot full?
+      - how many spaces are left?
+      - any available spots?
+      - parking availability
+      - how full is the parking?
+      - how many spots are open right now?
+      - tell me about parking availability
+
+  - intent: ask_vehicle_status
+    examples: |
+      - is [ABC-123](plate_number) currently parked?
+      - check plate [LHR-4567](plate_number)
+      - what is the status of [KHI-999](plate_number)?
+      - is vehicle [LEA-001](plate_number) inside?
+      - lookup [PES-202](plate_number)
+      - where is [ISB-010](plate_number)?
+      - find plate number [MUL-555](plate_number)
+
+  - intent: ask_entry_exit
+    examples: |
+      - when did [ABC-123](plate_number) enter?
+      - what time did [LHR-4567](plate_number) come in?
+      - when did [KHI-999](plate_number) exit?
+      - entry time for [LEA-001](plate_number)
+      - exit time of [PES-202](plate_number)
+      - show me the entry for [ISB-010](plate_number)
+      - log for [MUL-555](plate_number)
+
+  - intent: ask_daily_summary
+    examples: |
+      - give me today's summary
+      - how many vehicles entered today?
+      - daily report
+      - how many entries today?
+      - today's parking summary
+      - what happened today in the parking lot?
+      - summary for today
+      - how busy was parking today?
+
+  - intent: ask_help
+    examples: |
+      - help
+      - what can you do?
+      - what can I ask?
+      - how do you work?
+      - list your features
+      - what do you know about?

@@ -1,0 +1,44 @@
+version: "3.1"
+
+stories:
+  - story: greet and help
+    steps:
+      - intent: greet
+      - action: utter_greet
+      - intent: ask_help
+      - action: utter_help
+
+  - story: ask availability
+    steps:
+      - intent: ask_availability
+      - action: action_get_availability
+
+  - story: ask vehicle status with plate
+    steps:
+      - intent: ask_vehicle_status
+      - action: action_get_vehicle_status
+
+  - story: ask vehicle status without plate
+    steps:
+      - intent: ask_vehicle_status
+      - action: utter_ask_plate
+
+  - story: ask entry exit
+    steps:
+      - intent: ask_entry_exit
+      - action: action_get_entry_exit
+
+  - story: daily summary
+    steps:
+      - intent: ask_daily_summary
+      - action: action_get_daily_summary
+
+  - story: goodbye
+    steps:
+      - intent: goodbye
+      - action: utter_goodbye
+
+  - story: out of scope
+    steps:
+      - intent: out_of_scope
+      - action: utter_out_of_scope
