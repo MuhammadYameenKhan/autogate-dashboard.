@@ -13,6 +13,60 @@ from ..models import ParkingLog, Vehicle
 ocr_bp = Blueprint('ocr', __name__)
 
 
+@ocr_bp.route('/live', methods=['POST'])
+@jwt_required()
+def live_recognize():
+    """
+    Recognize plate from a single frame captured in the browser.
+    Frontend sends: image (file) as multipart/form-data.
+    """
+    if 'image' not in request.files:
+        return jsonify({'error': 'image file is required'}), 400
+
+    image = request.files['image']
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', '/tmp/autogate_uploads')
+    os.makedirs(upload_folder, exist_ok=True)
+
+    filename = f"{uuid.uuid4().hex}_{image.filename or 'frame.jpg'}"
+    filepath = os.path.join(upload_folder, filename)
+    image.save(filepath)
+
+    try:
+        lpr_url = current_app.config.get('LPR_SERVICE_URL', 'http://localhost:5001')
+        with open(filepath, 'rb') as f:
+            resp = requests.post(
+                f'{lpr_url}/recognize',
+                files={'image': f},
+                timeout=10
+            )
+
+        if resp.status_code != 200:
+            # Pass through LPR error where possible
+            try:
+                return jsonify(resp.json()), resp.status_code
+            except Exception:
+                return jsonify({'error': 'LPR service error'}), 502
+
+        data = resp.json() or {}
+        plate_number = (data.get('plate_number') or '').upper().strip()
+        confidence = float(data.get('confidence') or 0.0)
+
+        if not plate_number:
+            return jsonify({'error': 'No plate detected', 'confidence': 0.0}), 422
+
+        return jsonify({
+            'plateNumber': plate_number,
+            'confidence': confidence,
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'LPR service error: {str(e)}'}), 502
+    finally:
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
+
+
 @ocr_bp.route('/offline', methods=['POST'])
 @jwt_required()
 def offline_import():

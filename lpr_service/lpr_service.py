@@ -84,6 +84,17 @@ def start_camera():
     _camera_thread.start()
 
 
+def stop_camera(wait: float = 2.0):
+    """
+    Stop the camera worker and release the capture device.
+    Intended for emergency-stop / maintenance operations.
+    """
+    global _camera_thread, _camera_running
+    _camera_running = False
+    if _camera_thread and _camera_thread.is_alive():
+        _camera_thread.join(timeout=wait)
+
+
 # Start camera on import
 start_camera()
 
@@ -324,7 +335,7 @@ def trigger():
 
 def _generate_mjpeg():
     """Generator for MJPEG stream."""
-    while True:
+    while _camera_running:
         with _camera_lock:
             frame = _latest_frame.copy() if _latest_frame is not None else None
 
@@ -357,6 +368,18 @@ def camera_snapshot():
 
     _, buffer = cv2.imencode('.jpg', frame)
     return Response(buffer.tobytes(), mimetype='image/jpeg')
+
+
+@app.route('/camera/stop', methods=['POST'])
+def camera_stop():
+    stop_camera()
+    return jsonify({'ok': True, 'camera_running': _camera_running}), 200
+
+
+@app.route('/camera/start', methods=['POST'])
+def camera_start():
+    start_camera()
+    return jsonify({'ok': True, 'camera_running': _camera_running}), 200
 
 
 @app.route('/health', methods=['GET'])
