@@ -33,6 +33,11 @@ export interface GetCurrentlyParkedResponse {
   total: number
 }
 
+export interface LiveOcrResponse {
+  plateNumber: string
+  confidence: number
+}
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -165,6 +170,18 @@ export const apiService = {
     formData.append('gateId', metadata.gateId)
 
     return apiClient.post('/ocr/offline', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
+
+  // Live OCR (browser camera frames)
+  liveRecognize: async (file: File): Promise<LiveOcrResponse> => {
+    const formData = new FormData()
+    formData.append('image', file)
+
+    return apiClient.post('/ocr/live', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

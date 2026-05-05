@@ -1,6 +1,7 @@
 """
 Gate Control Routes: /api/gate/
 """
+import requests
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required
 from ..services.gate_service import send_gate_command, get_gate_status
@@ -9,6 +10,18 @@ from ..extensions import db
 from datetime import datetime
 
 gate_bp = Blueprint('gate', __name__)
+
+def _notify_lpr_camera(action: str):
+    """
+    Best-effort: tell LPR service to start/stop camera.
+    We intentionally do not fail the gate API if LPR is down.
+    """
+    try:
+        from flask import current_app
+        lpr_url = current_app.config.get('LPR_SERVICE_URL', 'http://localhost:5001')
+        requests.post(f"{lpr_url}/camera/{action}", timeout=2)
+    except Exception:
+        pass
 
 
 @gate_bp.route('/status', methods=['GET'])
@@ -40,6 +53,7 @@ def close_gate():
 @jwt_required()
 def emergency_stop():
     result = send_gate_command('emergency_stop')
+    _notify_lpr_camera('stop')
     gs = GateStatus.query.filter_by(gate_name='main').first()
     if not gs:
         gs = GateStatus(gate_name='main')
@@ -56,6 +70,7 @@ def emergency_stop():
 @jwt_required()
 def reset_emergency_stop():
     result = send_gate_command('reset')
+    _notify_lpr_camera('start')
     gs = GateStatus.query.filter_by(gate_name='main').first()
     if not gs:
         gs = GateStatus(gate_name='main')

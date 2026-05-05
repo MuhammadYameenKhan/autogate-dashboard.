@@ -21,6 +21,7 @@ import numpy as np
 import pytesseract
 from flask import Flask, request, jsonify, Response
 from ultralytics import YOLO
+import re
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,6 +84,17 @@ def start_camera():
     _camera_thread.start()
 
 
+def stop_camera(wait: float = 2.0):
+    """
+    Stop the camera worker and release the capture device.
+    Intended for emergency-stop / maintenance operations.
+    """
+    global _camera_thread, _camera_running
+    _camera_running = False
+    if _camera_thread and _camera_thread.is_alive():
+        _camera_thread.join(timeout=wait)
+
+
 # Start camera on import
 start_camera()
 
@@ -98,16 +110,92 @@ def detect_plate_yolo(image: np.ndarray):
 
     results = model(image, verbose=False)
     plates = []
+    h, w = image.shape[:2]
     for result in results:
         for box in result.boxes:
             conf  = float(box.conf[0])
             if conf < 0.4:
                 continue
             x1, y1, x2, y2 = map(int, box.xyxy[0])
-            crop = image[max(0, y1):y2, max(0, x1):x2]
+            # Pad crop slightly; tight boxes can clip characters.
+            pad_x = int(max(4, (x2 - x1) * 0.08))
+            pad_y = int(max(4, (y2 - y1) * 0.15))
+            x1p, y1p = max(0, x1 - pad_x), max(0, y1 - pad_y)
+            x2p, y2p = min(w, x2 + pad_x), min(h, y2 + pad_y)
+            crop = image[y1p:y2p, x1p:x2p]
             if crop.size > 0:
                 plates.append((crop, conf))
     return plates if plates else [(image, 0.3)]
+
+
+_PLATE_RE = re.compile(r'^[A-Z0-9]{4,10}$')
+
+
+def _preprocess_variants(plate_bgr: np.ndarray):
+    """
+    Build multiple preprocessed variants for robust OCR.
+    Returns a list of single-channel uint8 images.
+    """
+    if plate_bgr is None or plate_bgr.size == 0:
+        return []
+
+    gray = cv2.cvtColor(plate_bgr, cv2.COLOR_BGR2GRAY)
+
+    # Enlarge to help OCR on small plates.
+    h, w = gray.shape[:2]
+    scale = 3.0 if max(h, w) < 160 else 2.0
+    resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    # Add border so characters near edges are not lost.
+    bordered = cv2.copyMakeBorder(resized, 12, 12, 12, 12, cv2.BORDER_REPLICATE)
+
+    # Normalize contrast.
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    norm = clahe.apply(bordered)
+
+    # Denoise lightly.
+    den = cv2.fastNlMeansDenoising(norm, None, h=12, templateWindowSize=7, searchWindowSize=21)
+
+    # Two binarization strategies.
+    blur = cv2.GaussianBlur(den, (3, 3), 0)
+    _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    adap = cv2.adaptiveThreshold(
+        den, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
+    )
+
+    # Morph close to connect broken strokes.
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    otsu_closed = cv2.morphologyEx(otsu, cv2.MORPH_CLOSE, kernel, iterations=1)
+    adap_closed = cv2.morphologyEx(adap, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    return [otsu, adap, otsu_closed, adap_closed]
+
+
+def _score_plate_text(raw: str):
+    """
+    Clean and score OCR output; higher score = more plausible plate.
+    Returns (clean_plate, score).
+    """
+    clean = ''.join(c for c in (raw or '').upper() if c.isalnum())
+    if not clean:
+        return '', 0.0
+
+    score = 0.0
+    if _PLATE_RE.match(clean):
+        score += 2.5
+
+    # Prefer typical plate lengths (keep flexible).
+    if 5 <= len(clean) <= 8:
+        score += 1.5
+    elif 4 <= len(clean) <= 10:
+        score += 0.5
+
+    # Penalize repetitive noise like "IIIIII" or "00000".
+    if len(clean) >= 5 and len(set(clean)) <= 2:
+        score -= 1.0
+
+    return clean, score
 
 
 def ocr_plate(plate_img: np.ndarray) -> str:
@@ -115,18 +203,37 @@ def ocr_plate(plate_img: np.ndarray) -> str:
     Run Tesseract OCR on a cropped plate image.
     Returns cleaned plate string.
     """
-    # Pre-process
-    gray     = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
-    resized  = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    blurred  = cv2.GaussianBlur(resized, (3, 3), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # If Tesseract isn't on PATH, allow overriding via env var.
+    tcmd = os.getenv('TESSERACT_CMD')
+    if tcmd:
+        pytesseract.pytesseract.tesseract_cmd = tcmd
 
-    config = '--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    text   = pytesseract.image_to_string(thresh, config=config)
+    variants = _preprocess_variants(plate_img)
+    if not variants:
+        return ''
 
-    # Clean
-    clean = ''.join(c for c in text.upper() if c.isalnum()).strip()
-    return clean
+    # Try multiple page segmentation modes; plates vary.
+    tesseract_confs = [
+        '--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+        '--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+        '--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+    ]
+
+    best_plate = ''
+    best_score = 0.0
+
+    for img in variants:
+        for cfg in tesseract_confs:
+            try:
+                raw = pytesseract.image_to_string(img, config=cfg)
+            except Exception as e:
+                logger.warning(f"Tesseract OCR failed: {e}")
+                continue
+            plate, score = _score_plate_text(raw)
+            if score > best_score:
+                best_plate, best_score = plate, score
+
+    return best_plate
 
 
 def recognize_plate_from_image(image: np.ndarray):
@@ -228,7 +335,7 @@ def trigger():
 
 def _generate_mjpeg():
     """Generator for MJPEG stream."""
-    while True:
+    while _camera_running:
         with _camera_lock:
             frame = _latest_frame.copy() if _latest_frame is not None else None
 
@@ -261,6 +368,18 @@ def camera_snapshot():
 
     _, buffer = cv2.imencode('.jpg', frame)
     return Response(buffer.tobytes(), mimetype='image/jpeg')
+
+
+@app.route('/camera/stop', methods=['POST'])
+def camera_stop():
+    stop_camera()
+    return jsonify({'ok': True, 'camera_running': _camera_running}), 200
+
+
+@app.route('/camera/start', methods=['POST'])
+def camera_start():
+    start_camera()
+    return jsonify({'ok': True, 'camera_running': _camera_running}), 200
 
 
 @app.route('/health', methods=['GET'])
