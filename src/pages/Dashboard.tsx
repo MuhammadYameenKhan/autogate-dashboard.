@@ -1,19 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ParkingCircle, Car, FileText, AlertTriangle, Send, Video, Square, MessageCircle } from 'lucide-react'
-import './Dashboard.css'
-import { apiService } from '../services/api'
-
-interface DashboardStats {
-  totalCapacity: number
-  occupied: number
-  available: number
-  currentlyParked: number
-  todayEntries: number
-  todayExits: number
-  activeAnomalies: number
-}
+import "./Dashboard.css"
+import { apiService, type DashboardStats } from '../services/api'
 
 const Dashboard = () => {
+  const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
     totalCapacity: 100,
     occupied: 0,
@@ -31,9 +23,15 @@ const Dashboard = () => {
   const [chatbotLoading, setChatbotLoading] = useState(false)
   const [emergencyStopActive, setEmergencyStopActive] = useState(false)
   const [gateStatus, setGateStatus] = useState<'idle' | 'processing' | 'open' | 'closed'>('idle')
-  const [detectedPlate, setDetectedPlate] = useState<string | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const cameraFeedRef = useRef<HTMLImageElement>(null)
+
+  const quickActions = [
+    { label: 'View All Logs', path: '/logs' },
+    { label: 'Register Vehicle', path: '/vehicles' },
+    { label: 'View Forecast', path: '/forecasting' },
+    { label: 'Check Anomalies', path: '/anomalies' },
+  ]
 
   useEffect(() => {
     fetchDashboardStats()
@@ -100,9 +98,9 @@ const Dashboard = () => {
       setChatMessages(prev => [...prev, { role: 'bot', message: response.message }])
     } catch (error) {
       console.error('Error sending chatbot message:', error)
-      setChatMessages(prev => [...prev, { 
-        role: 'bot', 
-        message: 'Sorry, I encountered an error. Please try again.' 
+      setChatMessages(prev => [...prev, {
+        role: 'bot',
+        message: 'Sorry, I encountered an error. Please try again.'
       }])
     } finally {
       setChatbotLoading(false)
@@ -135,8 +133,8 @@ const Dashboard = () => {
     }
   }
 
-  const occupancyPercentage = stats.totalCapacity > 0 
-    ? Math.round((stats.occupied / stats.totalCapacity) * 100) 
+  const occupancyPercentage = stats.totalCapacity > 0
+    ? Math.round((stats.occupied / stats.totalCapacity) * 100)
     : 0
 
   const statCards = [
@@ -230,11 +228,6 @@ const Dashboard = () => {
                   target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="450"%3E%3Crect fill="%23f1f5f9" width="800" height="450"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%2394a3b8" font-family="sans-serif" font-size="24"%3ECamera Feed Unavailable%3C/text%3E%3C/svg%3E'
                 }}
               />
-              {detectedPlate && (
-                <div className="detected-plate-overlay">
-                  <span className="detected-plate-text">Detected: {detectedPlate}</span>
-                </div>
-              )}
             </div>
             <div className="camera-controls">
               <button
@@ -297,10 +290,16 @@ const Dashboard = () => {
         <div className="dashboard-section">
           <h2>Quick Actions</h2>
           <div className="quick-actions">
-            <button className="action-btn">View All Logs</button>
-            <button className="action-btn">Register Vehicle</button>
-            <button className="action-btn">View Forecast</button>
-            <button className="action-btn">Check Anomalies</button>
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className="action-btn"
+                onClick={() => navigate(action.path)}
+              >
+                {action.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>

@@ -2,6 +2,20 @@ import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
 
+export interface DashboardStats {
+  totalCapacity: number
+  occupied: number
+  available: number
+  currentlyParked: number
+  todayEntries: number
+  todayExits: number
+  activeAnomalies: number
+}
+
+export interface ChatbotMessageResponse {
+  message: string
+}
+
 export interface LogEntry {
   id: string
   plateNumber: string
@@ -69,7 +83,7 @@ apiClient.interceptors.response.use(
 
 export const apiService = {
   // Dashboard
-  getDashboardStats: async () => {
+  getDashboardStats: async (): Promise<DashboardStats> => {
     return apiClient.get('/dashboard/stats')
   },
 
@@ -172,7 +186,7 @@ export const apiService = {
   },
 
   // Chatbot
-  sendChatbotMessage: async (message: string) => {
+  sendChatbotMessage: async (message: string): Promise<ChatbotMessageResponse> => {
     return apiClient.post('/chatbot/message', { message })
   },
 
