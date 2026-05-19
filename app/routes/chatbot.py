@@ -6,7 +6,11 @@ Frontend reads: responses (array of {text})
 """
 import requests
 from flask import Blueprint, jsonify, request, current_app
-from .rag_assistant import ask_custom_bot
+
+try:
+    from .rag_assistant import ask_custom_bot
+except ImportError:
+    ask_custom_bot = None
 chatbot_bp = Blueprint('chatbot', __name__)
 
 
@@ -119,14 +123,16 @@ def _fallback(message: str) -> str:
 
     # --- THE GOOGLE GEMINI AI INTEGRATION (RAG) ---
     # Agar upar wala koi rule match nahi hua, toh sawal seedha Gemini (PDF Reader) ke paas jayega
-    try:
-        # LangChain + PDF ko sawal bhejain
-        ai_response = ask_custom_bot(message)
-        return f"🤖 **AutoGate AI (Knowledge Base):**\n\n{ai_response}"
-    except Exception as e:
-        # Agar internet band ho ya API issue ho
-        print("Gemini API Error:", e)
-        return ("🤔 I am currently offline and cannot access the knowledge base.\n\n"
-                "I can only answer specific queries right now. Try asking:\n"
-                "• *'Today's summary'*\n"
-                "• *'Available parking spots'*")
+    if ask_custom_bot is not None:
+        try:
+            # LangChain + PDF ko sawal bhejain
+            ai_response = ask_custom_bot(message)
+            return f"🤖 **AutoGate AI (Knowledge Base):**\n\n{ai_response}"
+        except Exception as e:
+            # Agar internet band ho ya API issue ho
+            print("Gemini API Error:", e)
+
+    return ("🤔 I am currently offline and cannot access the knowledge base.\n\n"
+            "I can only answer specific queries right  now. Try asking:\n"
+            "• *'Today's summary'*\n"
+            "• *'Available parking spots'*")
