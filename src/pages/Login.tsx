@@ -40,6 +40,10 @@ const Login = () => {
           <h1>Welcome Back</h1>
           <p>Sign in to your AutoGate account</p>
           <p className="auth-note">Use a backend account to sign in.</p>
+          <div className="demo-credentials">
+            <p><strong>Demo:</strong> admin / admin123</p>
+            <p><strong>Security:</strong> security / Security@123</p>
+          </div>
         </div>
 
         {error && (

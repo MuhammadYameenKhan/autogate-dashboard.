@@ -18,15 +18,17 @@ def login():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
 
-    user_id_or_username = data.get('user_id') or data.get('username')
-    password = data.get('password')
+    user_id_or_username = (data.get('user_id') or data.get('username') or '').strip()
+    password = data.get('password') or ''
 
     if not user_id_or_username or not password:
         return jsonify({'error': 'user_id/username and password are required'}), 400
 
+    from sqlalchemy import func
+    key = user_id_or_username.lower()
     user = User.query.filter(
-        (User.user_id == user_id_or_username) |
-        (User.username == user_id_or_username)
+        (func.lower(User.user_id) == key) |
+        (func.lower(User.username) == key)
     ).first()
 
     if not user or not user.check_password(password):

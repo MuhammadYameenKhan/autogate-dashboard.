@@ -70,9 +70,9 @@ const isJwtLike = (token: string | null) => {
   return typeof token === 'string' && token.split('.').length === 3
 }
 
-const unwrap = async <T>(request: Promise<{ data: T }>): Promise<T> => {
-  const response = await request
-  return response.data
+// Response interceptor already returns response.data; do not read .data again.
+const unwrap = async <T>(request: Promise<T>): Promise<T> => {
+  return request
 }
 
 // Request interceptor for adding auth tokens
@@ -96,10 +96,14 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 422) {
+    const isAuthRequest = error.config?.url?.includes('/auth/login') ||
+      error.config?.url?.includes('/auth/signup')
+    if (!isAuthRequest && (error.response?.status === 401 || error.response?.status === 422)) {
       localStorage.removeItem('authToken')
       localStorage.removeItem('userData')
-      window.location.href = '/login'
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

@@ -49,13 +49,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (username: string, password: string) => {
     try {
-      const response = await apiService.login(username, password)
+      const response = await apiService.login(username.trim(), password)
+      if (!response?.token) {
+        throw new Error('Login failed: no token received from server')
+      }
       localStorage.setItem('authToken', response.token)
       localStorage.setItem('userData', JSON.stringify(response.user))
       setUser(response.user)
       navigate('/dashboard')
     } catch (error: any) {
-      throw new Error(error.response?.data?.msg || error.response?.data?.error || 'Invalid username or password')
+      const msg = error.response?.data?.msg ||
+        error.response?.data?.error ||
+        error.message
+      throw new Error(msg || 'Invalid username or password')
     }
   }
 
