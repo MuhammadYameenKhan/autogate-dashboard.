@@ -1,7 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
-
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api'
 export interface DashboardStats {
   totalCapacity: number
   occupied: number
@@ -14,6 +13,19 @@ export interface DashboardStats {
 
 export interface ChatbotMessageResponse {
   message: string
+}
+
+export interface AuthUserResponse {
+  id: string
+  username: string
+  email: string
+  role: 'admin' | 'security' | 'user'
+}
+
+export interface AuthResponse {
+  token: string
+  refresh_token?: string
+  user: AuthUserResponse
 }
 
 export interface LogEntry {
@@ -54,12 +66,24 @@ const apiClient = axios.create({
   },
 })
 
+const isJwtLike = (token: string | null) => {
+  return typeof token === 'string' && token.split('.').length === 3
+}
+
+const unwrap = async <T>(request: Promise<{ data: T }>): Promise<T> => {
+  const response = await request
+  return response.data
+}
+
 // Request interceptor for adding auth tokens
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken')
-    if (token) {
+    if (isJwtLike(token)) {
       config.headers.Authorization = `Bearer ${token}`
+    } else if (token) {
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('userData')
     }
     return config
   },
@@ -72,9 +96,9 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized access
+    if (error.response?.status === 401 || error.response?.status === 422) {
       localStorage.removeItem('authToken')
+      localStorage.removeItem('userData')
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -84,17 +108,17 @@ apiClient.interceptors.response.use(
 export const apiService = {
   // Dashboard
   getDashboardStats: async (): Promise<DashboardStats> => {
-    return apiClient.get('/dashboard/stats')
+    return unwrap(apiClient.get<DashboardStats>('/dashboard/stats'))
   },
 
   // Parking Availability
-  getParkingAvailability: async () => {
-    return apiClient.get('/parking/availability')
+  getParkingAvailability: async (): Promise<{ totalCapacity: number; occupied: number; available: number; occupancyPercentage: number; trend: string; lastUpdated: string }> => {
+    return unwrap(apiClient.get('/parking/availability'))
   },
 
   // Currently Parked
   getCurrentlyParked: async (): Promise<GetCurrentlyParkedResponse> => {
-    return apiClient.get('/parking/currently-parked')
+    return unwrap(apiClient.get<GetCurrentlyParkedResponse>('/parking/currently-parked'))
   },
 
   // Logs
@@ -105,21 +129,21 @@ export const apiService = {
     dateTo?: string
     status?: string
   }): Promise<GetLogsResponse> => {
-    return apiClient.get('/logs', { params: filters })
+    return unwrap(apiClient.get<GetLogsResponse>('/logs', { params: filters }))
   },
 
   exportLogs: async (): Promise<Blob | string> => {
-    return apiClient.get('/logs/export', {
+    return unwrap(apiClient.get('/logs/export', {
       responseType: 'blob',
       headers: {
         Accept: 'text/csv',
       },
-    })
+    }))
   },
 
   // Vehicle Management
-  getVehicles: async () => {
-    return apiClient.get('/vehicles')
+  getVehicles: async (): Promise<unknown[]> => {
+    return unwrap(apiClient.get<unknown[]>('/vehicles'))
   },
 
   createVehicle: async (data: {
@@ -130,7 +154,7 @@ export const apiService = {
     vehicleType: string
     status: string
   }) => {
-    return apiClient.post('/vehicles', data)
+    return unwrap(apiClient.post('/vehicles', data))
   },
 
   updateVehicle: async (id: string, data: {
@@ -141,29 +165,29 @@ export const apiService = {
     vehicleType: string
     status: string
   }) => {
-    return apiClient.put(`/vehicles/${id}`, data)
+    return unwrap(apiClient.put(`/vehicles/${id}`, data))
   },
 
   deleteVehicle: async (id: string) => {
-    return apiClient.delete(`/vehicles/${id}`)
+    return unwrap(apiClient.delete(`/vehicles/${id}`))
   },
 
   // Forecasting
-  getForecast: async (period: '24h' | '48h' | '72h') => {
-    return apiClient.get('/forecast', { params: { period } })
+  getForecast: async (period: '24h' | '48h' | '72h'): Promise<unknown[]> => {
+    return unwrap(apiClient.get<unknown[]>('/forecast', { params: { period } }))
   },
 
   // Anomaly Detection
-  getAnomalies: async (filter: 'all' | 'active' | 'resolved') => {
-    return apiClient.get('/anomalies', { params: { filter } })
+  getAnomalies: async (filter: 'all' | 'active' | 'resolved'): Promise<unknown[]> => {
+    return unwrap(apiClient.get<unknown[]>('/anomalies', { params: { filter } }))
   },
 
   resolveAnomaly: async (id: string) => {
-    return apiClient.post(`/anomalies/${id}/resolve`)
+    return unwrap(apiClient.post(`/anomalies/${id}/resolve`))
   },
 
   markAnomalyFalsePositive: async (id: string) => {
-    return apiClient.post(`/anomalies/${id}/false-positive`)
+    return unwrap(apiClient.post(`/anomalies/${id}/false-positive`))
   },
 
   // Offline Log Import
@@ -178,39 +202,39 @@ export const apiService = {
     formData.append('timestamp', metadata.timestamp)
     formData.append('gateId', metadata.gateId)
 
-    return apiClient.post('/ocr/offline', formData, {
+    return unwrap(apiClient.post('/ocr/offline', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-    })
+    }))
   },
 
   // Chatbot
   sendChatbotMessage: async (message: string): Promise<ChatbotMessageResponse> => {
-    return apiClient.post('/chatbot/message', { message })
+    return unwrap(apiClient.post<ChatbotMessageResponse>('/chatbot/message', { message }))
   },
 
   // Emergency Stop
   emergencyStop: async () => {
-    return apiClient.post('/gate/emergency-stop')
+    return unwrap(apiClient.post('/gate/emergency-stop'))
   },
 
   resetEmergencyStop: async () => {
-    return apiClient.post('/gate/reset-emergency-stop')
+    return unwrap(apiClient.post('/gate/reset-emergency-stop'))
   },
 
   // Authentication
-  login: async (username: string, password: string) => {
-    return apiClient.post('/auth/login', { username, password })
+  login: async (username: string, password: string): Promise<AuthResponse> => {
+    return unwrap(apiClient.post<AuthResponse>('/auth/login', { username, password }))
   },
 
-  signup: async (username: string, email: string, password: string, userId: string) => {
-    return apiClient.post('/auth/signup', { username, email, password, userId })
+  signup: async (username: string, email: string, password: string, userId: string): Promise<AuthResponse> => {
+    return unwrap(apiClient.post<AuthResponse>('/auth/signup', { username, email, password, userId }))
   },
 
   // Parking Booking
-  getAvailableSlots: async (params: { date: string, time: string }) => {
-    return apiClient.get('/parking/slots/available', { params })
+  getAvailableSlots: async (params: { date: string, time: string }): Promise<unknown[]> => {
+    return unwrap(apiClient.get<unknown[]>('/parking/slots/available', { params }))
   },
 
   bookParkingSlot: async (data: {
@@ -220,19 +244,19 @@ export const apiService = {
     duration: number
     expiryTime: string
   }) => {
-    return apiClient.post('/parking/book', data)
+    return unwrap(apiClient.post('/parking/book', data))
   },
 
   getMyBookings: async () => {
-    return apiClient.get('/parking/bookings/my')
+    return unwrap(apiClient.get<unknown[]>('/parking/bookings/my'))
   },
 
   cancelBooking: async (bookingId: string) => {
-    return apiClient.post(`/parking/bookings/${bookingId}/cancel`)
+    return unwrap(apiClient.post(`/parking/bookings/${bookingId}/cancel`))
   },
 
-  getSuggestedParkingSlot: async (params: { date: string, time: string }) => {
-    return apiClient.get('/parking/suggested', { params })
+  getSuggestedParkingSlot: async (params: { date: string, time: string }): Promise<unknown | null> => {
+    return unwrap(apiClient.get<unknown | null>('/parking/suggested', { params }))
   },
 
   // Timetable Management
@@ -240,11 +264,11 @@ export const apiService = {
     const formData = new FormData()
     formData.append('image', file)
 
-    return apiClient.post('/timetable/extract', formData, {
+    return unwrap(apiClient.post('/timetable/extract', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-    })
+    }))
   },
 
   saveTimetable: async (schedule: {
@@ -256,7 +280,7 @@ export const apiService = {
     }>
     rawText: string
   }) => {
-    return apiClient.post('/timetable/save', schedule)
+    return unwrap(apiClient.post('/timetable/save', schedule))
   },
 
   updateTimetable: async (schedule: {
@@ -268,11 +292,11 @@ export const apiService = {
     }>
     rawText: string
   }) => {
-    return apiClient.put('/timetable/update', schedule)
+    return unwrap(apiClient.put('/timetable/update', schedule))
   },
 
   getMyTimetable: async () => {
-    return apiClient.get('/timetable/my')
+    return unwrap(apiClient.get<unknown>('/timetable/my'))
   },
 }
 

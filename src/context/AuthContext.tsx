@@ -20,55 +20,34 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const isJwtLike = (token: string | null) => {
+  return typeof token === 'string' && token.split('.').length === 3
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Check if user is already logged in
     const token = localStorage.getItem('authToken')
     const userData = localStorage.getItem('userData')
-    
-    if (token && userData) {
+
+    if (isJwtLike(token) && userData) {
       try {
         setUser(JSON.parse(userData))
       } catch (error) {
         localStorage.removeItem('authToken')
         localStorage.removeItem('userData')
       }
+    } else if (token) {
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('userData')
     }
     setLoading(false)
   }, [])
 
   const login = async (username: string, password: string) => {
-    // PROTOTYPE MODE: Hardcoded credentials for demo
-    // TODO: Replace with actual API call when backend is ready
-    
-    // Demo credentials
-    const demoCredentials = {
-      username: 'admin',
-      password: 'admin123',
-      userId: 'ADMIN001'
-    }
-
-    // Check hardcoded credentials
-    if (username.toLowerCase() === demoCredentials.username && password === demoCredentials.password) {
-      const demoUser: User = {
-        id: demoCredentials.userId,
-        username: demoCredentials.username,
-        email: 'admin@autogate.com',
-        role: 'admin'
-      }
-      
-      localStorage.setItem('authToken', 'demo-token-' + Date.now())
-      localStorage.setItem('userData', JSON.stringify(demoUser))
-      setUser(demoUser)
-      navigate('/dashboard')
-      return
-    }
-
-    // Try API call if credentials don't match (for future use)
     try {
       const response = await apiService.login(username, password)
       localStorage.setItem('authToken', response.token)
@@ -76,37 +55,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(response.user)
       navigate('/dashboard')
     } catch (error: any) {
-      throw new Error('Invalid username or password. Use: admin / admin123')
+      throw new Error(error.response?.data?.msg || error.response?.data?.error || 'Invalid username or password')
     }
   }
 
   const signup = async (username: string, email: string, password: string, userId: string) => {
-    // PROTOTYPE MODE: Store locally for demo
-    // TODO: Replace with actual API call when backend is ready
-    
-    // For now, just create a local user and log them in
-    const newUser: User = {
-      id: userId,
-      username: username,
-      email: email,
-      role: 'user' // Default role for new signups
+    try {
+      const response = await apiService.signup(username, email, password, userId)
+      localStorage.setItem('authToken', response.token)
+      localStorage.setItem('userData', JSON.stringify(response.user))
+      setUser(response.user)
+      navigate('/dashboard')
+    } catch (error: any) {
+      throw new Error(error.response?.data?.msg || error.response?.data?.error || 'Signup failed')
     }
-    
-    localStorage.setItem('authToken', 'demo-token-' + Date.now())
-    localStorage.setItem('userData', JSON.stringify(newUser))
-    setUser(newUser)
-    navigate('/dashboard')
-    
-    // Uncomment when backend is ready:
-    // try {
-    //   const response = await apiService.signup(username, email, password, userId)
-    //   localStorage.setItem('authToken', response.token)
-    //   localStorage.setItem('userData', JSON.stringify(response.user))
-    //   setUser(response.user)
-    //   navigate('/dashboard')
-    // } catch (error: any) {
-    //   throw new Error(error.response?.data?.message || 'Signup failed')
-    // }
   }
 
   const logout = () => {
