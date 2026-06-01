@@ -23,8 +23,13 @@ const Dashboard = () => {
   const [chatbotLoading, setChatbotLoading] = useState(false)
   const [emergencyStopActive, setEmergencyStopActive] = useState(false)
   const [gateStatus, setGateStatus] = useState<'idle' | 'processing' | 'open' | 'closed'>('idle')
+  const [detectedPlate, setDetectedPlate] = useState<string | null>(null)
+  const [detectedConfidence, setDetectedConfidence] = useState<number | null>(null)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const cameraFeedRef = useRef<HTMLImageElement>(null)
+  const cameraFeedRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const liveOcrTimerRef = useRef<number | null>(null)
 
   const quickActions = [
     { label: 'View All Logs', path: '/logs' },
@@ -46,21 +51,29 @@ const Dashboard = () => {
   }, [chatMessages])
 
   useEffect(() => {
-    // Fetch live camera feed
-    const updateCameraFeed = () => {
-      if (cameraFeedRef.current) {
-        // Update camera feed URL with timestamp to prevent caching
-        const timestamp = new Date().getTime()
-        cameraFeedRef.current.src = `${import.meta.env.VITE_CAMERA_FEED_URL || 'http://localhost:5000/api/camera/feed'}?t=${timestamp}`
-      }
+    startBrowserCamera()
+
+    return () => {
+      stopBrowserCamera()
+    }
+  }, [])
+
+  useEffect(() => {
+    // Start/stop live OCR based on emergency state + camera availability
+    if (emergencyStopActive) {
+      stopLiveOcr()
+      setDetectedPlate(null)
+      setDetectedConfidence(null)
+      return
     }
 
-    // Update camera feed every 500ms for live view
-    const cameraInterval = setInterval(updateCameraFeed, 500)
-    updateCameraFeed() // Initial load
+    if (!cameraError) {
+      startLiveOcr()
+    }
 
-    return () => clearInterval(cameraInterval)
-  }, [])
+    return () => stopLiveOcr()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emergencyStopActive, cameraError])
 
   useEffect(() => {
     // Simulate gate status updates (in real implementation, this would come from WebSocket or API)
@@ -80,6 +93,106 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching dashboard stats:', error)
       setLoading(false)
+    }
+  }
+
+  const stopBrowserCamera = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop())
+      cameraStreamRef.current = null
+    }
+
+    if (cameraFeedRef.current) {
+      cameraFeedRef.current.srcObject = null
+    }
+  }
+
+  const stopLiveOcr = () => {
+    if (liveOcrTimerRef.current) {
+      window.clearInterval(liveOcrTimerRef.current)
+      liveOcrTimerRef.current = null
+    }
+  }
+
+  const captureFrameAsFile = async (): Promise<File | null> => {
+    const video = cameraFeedRef.current
+    if (!video) return null
+    if (video.readyState < 2) return null // HAVE_CURRENT_DATA
+
+    const w = video.videoWidth
+    const h = video.videoHeight
+    if (!w || !h) return null
+
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(video, 0, 0, w, h)
+
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.8)
+    )
+    if (!blob) return null
+
+    return new File([blob], 'frame.jpg', { type: 'image/jpeg' })
+  }
+
+  const startLiveOcr = () => {
+    if (liveOcrTimerRef.current) return
+
+    let inFlight = false
+
+    liveOcrTimerRef.current = window.setInterval(async () => {
+      if (inFlight) return
+      if (emergencyStopActive) return
+      if (cameraError) return
+
+      try {
+        const frameFile = await captureFrameAsFile()
+        if (!frameFile) return
+
+        inFlight = true
+        const res = await apiService.liveRecognize(frameFile)
+        setDetectedPlate(res.plateNumber)
+        setDetectedConfidence(res.confidence)
+      } catch (error) {
+        // Keep UI running; OCR may fail intermittently.
+        console.error('Live OCR failed:', error)
+      } finally {
+        inFlight = false
+      }
+    }, 1000)
+  }
+
+  const startBrowserCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera access is not supported in this browser.')
+      return
+    }
+
+    try {
+      stopBrowserCamera()
+      setCameraError(null)
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      })
+
+      cameraStreamRef.current = stream
+
+      if (cameraFeedRef.current) {
+        cameraFeedRef.current.srcObject = stream
+        await cameraFeedRef.current.play()
+      }
+    } catch (error) {
+      console.error('Error accessing browser camera:', error)
+      setCameraError('Camera access was denied or is unavailable. Please allow browser camera permission.')
     }
   }
 
@@ -111,6 +224,7 @@ const Dashboard = () => {
     if (window.confirm('Are you sure you want to activate emergency stop? This will immediately close the gate.')) {
       try {
         await apiService.emergencyStop()
+        stopBrowserCamera()
         setEmergencyStopActive(true)
         setGateStatus('closed')
         // Show alert
@@ -125,6 +239,7 @@ const Dashboard = () => {
   const handleResetEmergencyStop = async () => {
     try {
       await apiService.resetEmergencyStop()
+      await startBrowserCamera()
       setEmergencyStopActive(false)
       setGateStatus('idle')
       alert('Emergency stop reset. System is back to normal operation.')
@@ -218,16 +333,26 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="camera-feed-container">
-              <img
+              <video
                 ref={cameraFeedRef}
                 className="camera-feed"
-                alt="Live gate camera feed"
-                onError={(e) => {
-                  // Fallback if camera feed is unavailable
-                  const target = e.target as HTMLImageElement
-                  target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="450"%3E%3Crect fill="%23f1f5f9" width="800" height="450"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%2394a3b8" font-family="sans-serif" font-size="24"%3ECamera Feed Unavailable%3C/text%3E%3C/svg%3E'
-                }}
+                muted
+                autoPlay
+                playsInline
               />
+              {cameraError && (
+                <div className="camera-error-overlay">
+                  <span>{cameraError}</span>
+                </div>
+              )}
+              {detectedPlate && (
+                <div className="detected-plate-overlay">
+                  <span className="detected-plate-text">
+                    Detected: {detectedPlate}
+                    {typeof detectedConfidence === 'number' ? ` (${Math.round(detectedConfidence * 100)}%)` : ''}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="camera-controls">
               <button
