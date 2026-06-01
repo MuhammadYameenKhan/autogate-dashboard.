@@ -1,19 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ParkingCircle, Car, FileText, AlertTriangle, Send, Video, Square, MessageCircle } from 'lucide-react'
-import './Dashboard.css'
-import { apiService } from '../services/api'
-
-interface DashboardStats {
-  totalCapacity: number
-  occupied: number
-  available: number
-  currentlyParked: number
-  todayEntries: number
-  todayExits: number
-  activeAnomalies: number
-}
+import "./Dashboard.css"
+import { apiService, type DashboardStats } from '../services/api'
 
 const Dashboard = () => {
+  const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
     totalCapacity: 100,
     occupied: 0,
@@ -38,6 +30,13 @@ const Dashboard = () => {
   const cameraFeedRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const liveOcrTimerRef = useRef<number | null>(null)
+
+  const quickActions = [
+    { label: 'View All Logs', path: '/logs' },
+    { label: 'Register Vehicle', path: '/vehicles' },
+    { label: 'View Forecast', path: '/forecasting' },
+    { label: 'Check Anomalies', path: '/anomalies' },
+  ]
 
   useEffect(() => {
     fetchDashboardStats()
@@ -212,9 +211,9 @@ const Dashboard = () => {
       setChatMessages(prev => [...prev, { role: 'bot', message: response.message }])
     } catch (error) {
       console.error('Error sending chatbot message:', error)
-      setChatMessages(prev => [...prev, { 
-        role: 'bot', 
-        message: 'Sorry, I encountered an error. Please try again.' 
+      setChatMessages(prev => [...prev, {
+        role: 'bot',
+        message: 'Sorry, I encountered an error. Please try again.'
       }])
     } finally {
       setChatbotLoading(false)
@@ -249,8 +248,8 @@ const Dashboard = () => {
     }
   }
 
-  const occupancyPercentage = stats.totalCapacity > 0 
-    ? Math.round((stats.occupied / stats.totalCapacity) * 100) 
+  const occupancyPercentage = stats.totalCapacity > 0
+    ? Math.round((stats.occupied / stats.totalCapacity) * 100)
     : 0
 
   const statCards = [
@@ -416,10 +415,16 @@ const Dashboard = () => {
         <div className="dashboard-section">
           <h2>Quick Actions</h2>
           <div className="quick-actions">
-            <button className="action-btn">View All Logs</button>
-            <button className="action-btn">Register Vehicle</button>
-            <button className="action-btn">View Forecast</button>
-            <button className="action-btn">Check Anomalies</button>
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className="action-btn"
+                onClick={() => navigate(action.path)}
+              >
+                {action.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>

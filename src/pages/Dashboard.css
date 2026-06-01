@@ -263,9 +263,12 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -427,6 +430,7 @@
   font-size: 0.875rem;
   line-height: 1.5;
   word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 .chat-message.user .message-content {
@@ -451,13 +455,18 @@
 }
 
 @keyframes dots {
-  0%, 20% {
+
+  0%,
+  20% {
     content: '.';
   }
+
   40% {
     content: '..';
   }
-  60%, 100% {
+
+  60%,
+  100% {
     content: '...';
   }
 }
@@ -511,4 +520,3 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
-

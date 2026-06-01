@@ -1,0 +1,70 @@
+AutoGate — AI-Powered Campus Parking System (Knowledge Base)
+
+OVERVIEW
+AutoGate is a Final Year Project (FYP) parking management system for university campuses.
+It combines automatic license plate recognition (LPR), a web dashboard, gate control, anomaly detection,
+occupancy forecasting, and an AI assistant.
+
+SYSTEM ARCHITECTURE
+- React dashboard (frontend) talks to Flask REST API on port 5000.
+- PostgreSQL stores users, vehicles, parking logs, bookings, anomalies, and forecasts.
+- Rasa chatbot (port 5005) handles structured intents; when offline, Flask uses rule-based + knowledge-base AI.
+- Barrier desktop app (TCP port 9999) opens/closes the physical gate.
+
+LICENSE PLATE RECOGNITION (LPR)
+- The LPR microservice runs on port 5001 and processes camera frames in real time.
+- It uses YOLOv8 to detect license plates and OCR to read the plate text.
+- Detected plates are sent to the Flask API as entry/exit events for authorization and logging.
+- Registered active vehicles are allowed; unknown plates trigger an anomaly record.
+
+USER ROLES
+- Admin: full dashboard, emergency stop, vehicle management, logs, anomalies, forecasts.
+- Security: gate monitoring, logs, anomaly review.
+- User: book parking slots, manage own vehicles and timetable.
+
+PARKING POLICY
+- Total capacity: 100 spots across zones A, B, C, D.
+- Registered vehicles (active status) may enter automatically when LPR recognizes the plate.
+- Unknown plates create an anomaly and may be denied entry until registered by admin.
+- Faculty and staff vehicles must be registered with plate number, owner name, and department.
+- Students may book slots in advance for a date and time window; overlapping bookings are rejected.
+
+PARKING PENALTIES AND VIOLATIONS
+- Unauthorized parking (no permit / wrong zone): first offense warning; repeat offense RM 50 fine.
+- Overstaying booked slot by more than 30 minutes: RM 20 per hour (capped at RM 100 per day).
+- Parking in faculty/staff zones without authorization: RM 75 fine and possible towing.
+- Blocking gate lanes or fire routes: immediate RM 200 fine and vehicle may be towed.
+- Repeated unknown-plate entries (anomaly records): access suspended until vehicle is registered with admin.
+- Fines are logged by security; pay at the campus transport office within 14 days to avoid further penalties.
+- Appeal: submit plate number, date, and reason to security@campus.edu within 7 days of the notice.
+
+GATE OPERATIONS
+- Normal mode: LPR detects plate → backend logs entry/exit → gate opens for authorized vehicles.
+- Emergency stop: admin can halt gate movement from the dashboard; reset restores normal operation.
+- All gate events are logged with timestamp, plate number, and status.
+
+ANOMALY DETECTION
+- Triggers include: unknown plate, repeated entry without exit, after-hours access, suspicious patterns.
+- Security or admin can mark an anomaly as resolved or false positive.
+
+FORECASTING
+- Prophet model predicts occupancy for 24h, 48h, or 72h horizons.
+- Forecast cache is refreshed on a schedule and via manual refresh endpoint.
+
+CHATBOT / AI ASSISTANT
+- Answers parking availability, daily summaries, and help menus from live database when possible.
+- Knowledge-base mode answers policy, architecture, and documentation questions from this document.
+
+BOOKING
+- Users select date, time, duration, and an available slot.
+- My bookings can be cancelled before the slot start time.
+
+OCR OFFLINE IMPORT
+- Admins can upload batch images for offline plate recognition when the live camera is unavailable.
+
+TIMETABLE INTEGRATION
+- Users upload or paste timetables; the system suggests parking slots based on class schedule.
+
+SUPPORT
+- Default admin login: username admin, password admin123 (development only).
+- API base URL: http://localhost:5000/api

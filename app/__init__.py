@@ -17,6 +17,26 @@ def create_app(config_name='development'):
     migrate.init_app(app, db)
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
+    # JWT error handlers: return consistent JSON for malformed/invalid tokens
+    from flask import jsonify
+    from flask_jwt_extended import exceptions as jwt_exceptions
+
+    @jwt.unauthorized_loader
+    def _unauthorized_callback(reason):
+        return jsonify({'msg': reason or 'Missing Authorization Header'}), 401
+
+    @jwt.invalid_token_loader
+    def _invalid_token_callback(reason):
+        return jsonify({'msg': reason or 'Invalid token'}), 401
+
+    @jwt.expired_token_loader
+    def _expired_token_callback(jwt_header, jwt_payload):
+        return jsonify({'msg': 'Token has expired'}), 401
+
+    @jwt.revoked_token_loader
+    def _revoked_token_callback(jwt_header, jwt_payload):
+        return jsonify({'msg': 'Token has been revoked'}), 401
+
     # Register blueprints
     from .routes.auth import auth_bp
     from .routes.dashboard import dashboard_bp

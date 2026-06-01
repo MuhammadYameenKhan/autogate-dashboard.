@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { LogIn, Mail, Lock, User } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { LogIn, Lock, User } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import './Auth.css'
 
@@ -12,7 +12,6 @@ const Login = () => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
-  const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,10 +39,10 @@ const Login = () => {
           </div>
           <h1>Welcome Back</h1>
           <p>Sign in to your AutoGate account</p>
+          <p className="auth-note">Use a backend account to sign in.</p>
           <div className="demo-credentials">
-            <p><strong>Demo Credentials:</strong></p>
-            <p>Username: <code>admin</code></p>
-            <p>Password: <code>admin123</code></p>
+            <p><strong>Demo:</strong> admin / admin123</p>
+            <p><strong>Security:</strong> security / Security@123</p>
           </div>
         </div>
 

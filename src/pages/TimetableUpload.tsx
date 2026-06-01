@@ -37,7 +37,6 @@ const TimetableUpload = () => {
       const data = await apiService.getMyTimetable()
       if (data) {
         setSavedSchedule(data)
-        setExtractedSchedule(data)
       }
     } catch (error) {
       console.error('Error fetching saved schedule:', error)
@@ -76,12 +75,19 @@ const TimetableUpload = () => {
       setExtractedSchedule(response)
       setResult({
         success: true,
-        message: 'Timetable extracted successfully! Please review and save.'
+        message: response.classes.length > 0
+          ? 'Timetable extracted successfully! Please review and save.'
+          : 'Image processed but no classes were detected. Try a clearer photo.'
       })
     } catch (error: any) {
+      const errData = error.response?.data
+      const rawText = errData?.rawText
+      if (rawText) {
+        setExtractedSchedule({ classes: [], rawText })
+      }
       setResult({
         success: false,
-        message: error.message || 'Failed to extract timetable. Please try again.'
+        message: errData?.error || error.message || 'Failed to extract timetable. Please try again.'
       })
     } finally {
       setProcessing(false)
@@ -198,7 +204,7 @@ const TimetableUpload = () => {
             )}
           </div>
 
-          {selectedFile && !extractedSchedule && (
+          {selectedFile && (!extractedSchedule || extractedSchedule.classes.length === 0) && (
             <button
               className="extract-btn"
               onClick={handleExtract}
@@ -234,6 +240,13 @@ const TimetableUpload = () => {
                 <span className="update-badge">Update Available</span>
               )}
             </div>
+
+            {extractedSchedule.rawText && (
+              <details className="raw-ocr-details">
+                <summary>View extracted text (OCR)</summary>
+                <pre className="raw-ocr-text">{extractedSchedule.rawText}</pre>
+              </details>
+            )}
 
             <div className="schedule-preview">
               {extractedSchedule.classes.length === 0 ? (

@@ -22,9 +22,9 @@ def init_db():
         if not User.query.filter_by(username='admin').first():
             admin = User(user_id='ADMIN001', username='admin',
                          email='admin@ucp.edu.pk', role='admin')
-            admin.set_password('Admin@123')
+            admin.set_password('admin123')
             db.session.add(admin)
-            print("✅  Admin user  (username: admin / password: Admin@123)")
+            print("✅  Admin user  (username: admin / password: admin123)")
 
         # ── Security user ────────────────────────────────────────────────────
         if not User.query.filter_by(username='security').first():
@@ -72,7 +72,7 @@ def init_db():
         db.session.commit()
         print("\n🎉  Database initialized successfully!")
         print("\nDefault login credentials:")
-        print("  Admin    → username: admin     / password: Admin@123")
+        print("  Admin    → username: admin     / password: admin123")
         print("  Security → username: security  / password: Security@123")
 
 

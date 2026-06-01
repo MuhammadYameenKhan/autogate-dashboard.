@@ -370,16 +370,117 @@ def camera_snapshot():
     return Response(buffer.tobytes(), mimetype='image/jpeg')
 
 
-@app.route('/camera/stop', methods=['POST'])
-def camera_stop():
-    stop_camera()
-    return jsonify({'ok': True, 'camera_running': _camera_running}), 200
+def ocr_timetable_text(image: np.ndarray) -> str:
+    """OCR full timetable image (document mode, not plate mode)."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    scale = max(1.0, 1800 / max(w, h))
+    if scale > 1.0:
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    config = '--oem 3 --psm 6'
+    return pytesseract.image_to_string(thresh, config=config).strip()
 
 
-@app.route('/camera/start', methods=['POST'])
-def camera_start():
-    start_camera()
-    return jsonify({'ok': True, 'camera_running': _camera_running}), 200
+def _parse_timetable_text(raw_text: str) -> list:
+    """Lightweight parser for timetable OCR output."""
+    import re
+
+    days = {
+        'mon': 'Monday', 'monday': 'Monday', 'tue': 'Tuesday', 'tuesday': 'Tuesday',
+        'wed': 'Wednesday', 'wednesday': 'Wednesday', 'thu': 'Thursday', 'thursday': 'Thursday',
+        'fri': 'Friday', 'friday': 'Friday', 'sat': 'Saturday', 'saturday': 'Saturday',
+        'sun': 'Sunday', 'sunday': 'Sunday',
+    }
+    day_re = re.compile(
+        r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|'
+        r'Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b', re.I
+    )
+    time_range_re = re.compile(
+        r'(\d{1,2})\s*[:.]\s*(\d{2})\s*(?:-|–|—|to)\s*(\d{1,2})\s*[:.]\s*(\d{2})', re.I
+    )
+    time_single_re = re.compile(r'\b(\d{1,2})\s*[:.]\s*(\d{2})\b')
+    building_re = re.compile(
+        r'\b(?:block|building|bldg|room)\s*([A-Za-z0-9]{1,4})\b', re.I
+    )
+
+    classes = []
+    seen = set()
+    current_day = None
+
+    for line in raw_text.splitlines():
+        line = re.sub(r'\s+', ' ', line).strip()
+        if not line:
+            continue
+        m = day_re.search(line)
+        if m:
+            key = m.group(1).lower()
+            current_day = days.get(key) or days.get(key[:3]) or m.group(1).title()
+        if not current_day:
+            continue
+
+        time_str = ''
+        tr = time_range_re.search(line)
+        if tr:
+            time_str = f'{int(tr.group(1)):02d}:{tr.group(2)} - {int(tr.group(3)):02d}:{tr.group(4)}'
+        else:
+            times = time_single_re.findall(line)
+            if len(times) >= 2:
+                time_str = (
+                    f'{int(times[0][0]):02d}:{times[0][1]} - '
+                    f'{int(times[1][0]):02d}:{times[1][1]}'
+                )
+            elif times:
+                time_str = f'{int(times[0][0]):02d}:{times[0][1]}'
+
+        if not time_str:
+            continue
+
+        building = ''
+        bm = building_re.search(line)
+        if bm:
+            building = bm.group(1).upper()
+
+        course = day_re.sub('', line)
+        course = time_range_re.sub('', course)
+        course = time_single_re.sub('', course)
+        course = building_re.sub('', course)
+        course = re.sub(r'\s+', ' ', course).strip() or 'Class'
+
+        entry = {
+            'day': current_day,
+            'time': time_str,
+            'building': building or 'A',
+            'course': course[:120],
+        }
+        key = (entry['day'], entry['time'], entry['course'])
+        if key not in seen:
+            seen.add(key)
+            classes.append(entry)
+
+    return classes
+
+
+@app.route('/timetable/extract', methods=['POST'])
+def timetable_extract():
+    """Extract class schedule from uploaded timetable image."""
+    if 'image' not in request.files:
+        return jsonify({'error': 'image file required'}), 400
+
+    file = request.files['image']
+    img_bytes = np.frombuffer(file.read(), np.uint8)
+    image = cv2.imdecode(img_bytes, cv2.IMREAD_COLOR)
+    if image is None:
+        return jsonify({'error': 'Invalid image'}), 422
+
+    try:
+        raw_text = ocr_timetable_text(image)
+    except Exception as exc:
+        return jsonify({'error': f'OCR failed: {exc}'}), 422
+
+    classes = _parse_timetable_text(raw_text)
+    return jsonify({'classes': classes, 'rawText': raw_text}), 200
 
 
 @app.route('/health', methods=['GET'])
