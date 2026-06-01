@@ -7,6 +7,9 @@ import re
 from pathlib import Path
 
 _KB_FILE = Path(__file__).resolve().parents[2] / 'data' / 'autogate_knowledge_base.txt'
+_KB_PDF = Path(__file__).resolve().parents[2] / 'data' / 'autogate_knowledge_base.pdf'
+_kb_text_cache: str | None = None
+_kb_source_mtime: float = 0.0
 _gemini_model = None
 _gemini_error = None
 
@@ -40,12 +43,55 @@ _TOPIC_ALIASES: dict[str, list[str]] = {
     'booking': ['BOOKING'],
     'chatbot': ['CHATBOT / AI ASSISTANT'],
     'assistant': ['CHATBOT / AI ASSISTANT'],
+    'penalty': ['PARKING PENALTIES AND VIOLATIONS'],
+    'penalties': ['PARKING PENALTIES AND VIOLATIONS'],
+    'fine': ['PARKING PENALTIES AND VIOLATIONS'],
+    'fines': ['PARKING PENALTIES AND VIOLATIONS'],
+    'violation': ['PARKING PENALTIES AND VIOLATIONS'],
+    'violations': ['PARKING PENALTIES AND VIOLATIONS'],
 }
 
 
-def _load_kb_text() -> str:
+def _load_pdf_text() -> str:
+    if not _KB_PDF.is_file():
+        return ''
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(str(_KB_PDF))
+        return '\n'.join(page.extract_text() or '' for page in reader.pages).strip()
+    except Exception as exc:
+        print(f'PDF knowledge base read failed: {exc}')
+        return ''
+
+
+def _kb_source_mtime() -> float:
+    times = []
+    if _KB_PDF.is_file():
+        times.append(_KB_PDF.stat().st_mtime)
     if _KB_FILE.is_file():
-        return _KB_FILE.read_text(encoding='utf-8')
+        times.append(_KB_FILE.stat().st_mtime)
+    return max(times) if times else 0.0
+
+
+def _load_kb_text() -> str:
+    global _kb_text_cache, _kb_source_mtime
+    mtime = _kb_source_mtime()
+    if _kb_text_cache is not None and mtime == _kb_source_mtime:
+        return _kb_text_cache
+
+    pdf_text = _load_pdf_text()
+    if pdf_text:
+        _kb_text_cache = pdf_text
+        _kb_source_mtime = mtime
+        return pdf_text
+
+    if _KB_FILE.is_file():
+        _kb_text_cache = _KB_FILE.read_text(encoding='utf-8')
+        _kb_source_mtime = mtime
+        return _kb_text_cache
+
+    _kb_text_cache = ''
+    _kb_source_mtime = mtime
     return ''
 
 
@@ -202,7 +248,7 @@ def _ask_gemini(query: str, context: str, section_title: str) -> str:
 
     if _gemini_model is None and _gemini_error is None:
         genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        _gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
     if _gemini_model is None:
         raise RuntimeError(_gemini_error or 'Gemini model unavailable')
@@ -237,31 +283,59 @@ def _ask_rag_assistant(query: str) -> str | None:
     return None
 
 
+def search_knowledge_base_local(query: str) -> str:
+    """Fast keyword search over text/PDF knowledge base (no AI APIs)."""
+    kb_text = _load_kb_text()
+    if not kb_text:
+        return (
+            'I do not have specific information on that in the knowledge base. '
+            f'Add {_KB_FILE.name} or {_KB_PDF.name} under data/.'
+        )
+    return _simple_search(query, kb_text)
+
+
 def ask_knowledge_base(query: str) -> str:
     kb_text = _load_kb_text()
     if not kb_text:
         return (
             '⚠️ Knowledge base file is missing. '
-            f'Expected at: {_KB_FILE}'
+            f'Expected at: {_KB_FILE} or {_KB_PDF}'
         )
 
-    # Prefer LangChain RAG with strict prompt (rag_assistant.py)
-    rag_answer = _ask_rag_assistant(query)
-    if rag_answer:
-        return rag_answer
+    use_rag = os.getenv('USE_RAG', '').strip().lower() in ('1', 'true', 'yes')
+    use_gemini = os.getenv('USE_GEMINI', '').strip().lower() in ('1', 'true', 'yes')
 
-    section_title, context = _retrieve_context(query, kb_text)
+    # Default: fast local search (text file or PDF) — avoids slow vector DB init
+    local_answer = _simple_search(query, kb_text)
+    if not use_rag and not use_gemini:
+        return local_answer
 
-    try:
-        return _ask_gemini(query, context, section_title)
-    except Exception as exc:
-        print(f'Knowledge base (Gemini) fallback to local search: {exc}')
-        return _simple_search(query, kb_text)
+    if use_rag:
+        rag_answer = _ask_rag_assistant(query)
+        if rag_answer:
+            return rag_answer
+
+    if use_gemini:
+        section_title, context = _retrieve_context(query, kb_text)
+        try:
+            return _ask_gemini(query, context, section_title)
+        except Exception as exc:
+            print(f'Knowledge base (Gemini) fallback to local search: {exc}')
+
+    return local_answer
 
 
 def is_knowledge_query(message: str) -> bool:
     """Detect documentation / policy questions for knowledge-base routing."""
     msg = message.lower().strip()
+    operational = (
+        r'\b(summary|report|today|daily|penalty|penalties|fine|fines|violation)\b',
+        r'\b(available|free|spots?|spaces?)\b.*\b(park|parking)\b',
+        r'\b(park|parking)\b.*\b(available|free|spots?|spaces?)\b',
+    )
+    if any(re.search(p, msg) for p in operational):
+        return False
+
     patterns = [
         r'\b(what|how|why|when|where|who|explain|describe|tell me about)\b',
         r'\b(knowledge|policy|policies|architecture|system|autogate|lpr|anomaly|forecast)\b',

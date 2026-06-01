@@ -8,7 +8,11 @@ import re
 import requests
 from flask import Blueprint, jsonify, request, current_app
 
-from ..services.knowledge_base import ask_knowledge_base, is_knowledge_query
+from ..services.knowledge_base import (
+    ask_knowledge_base,
+    is_knowledge_query,
+    search_knowledge_base_local,
+)
 
 chatbot_bp = Blueprint('chatbot', __name__)
 
@@ -25,6 +29,11 @@ def send_message():
 
     sender = data.get('sender', 'user')
     message = (data.get('message') or '').strip()
+
+    # Fast paths: live DB stats + local KB/PDF (skip slow Rasa/RAG)
+    fast_reply = _fast_intent(message)
+    if fast_reply:
+        return _chat_response(sender, fast_reply)
 
     # Knowledge-base / documentation questions use local AI (skip Rasa)
     if is_knowledge_query(message):
@@ -64,6 +73,35 @@ def _chat_response(sender: str, text: str):
     }), 200
 
 
+def _fast_intent(message: str) -> str | None:
+    """Operational intents answered from database or local KB/PDF."""
+    msg = message.lower().strip()
+
+    if _has_word(msg, ('summary', 'report', 'today', 'daily', 'stats')):
+        return _daily_summary()
+
+    if _has_word(msg, ('penalty', 'penalties', 'fine', 'fines', 'violation', 'violations')):
+        return _penalty_info(message)
+
+    if _has_word(msg, ('available', 'free', 'capacity', 'occupancy')) and _has_word(
+        msg, ('spot', 'space', 'parking', 'park')
+    ):
+        return _parking_availability()
+
+    return None
+
+
+def _penalty_info(message: str) -> str:
+    answer = search_knowledge_base_local(message)
+    if 'do not have specific information' in answer.lower():
+        return (
+            '📋 **Parking Penalties**\n\n'
+            'No penalty details are in the knowledge base yet. '
+            'Contact campus security for violation fees and appeals.'
+        )
+    return f'📋 **Parking Penalties**\n\n{answer}'
+
+
 def _knowledge_response(message: str) -> str:
     try:
         answer = ask_knowledge_base(message)
@@ -92,9 +130,6 @@ def _fallback(message: str) -> str:
             'knowledge base (e.g. "What is AutoGate?" or "Explain parking policy").\n\n'
             'How can I assist you today?'
         )
-
-    if _has_word(msg, ('summary', 'report', 'today')):
-        return _daily_summary()
 
     if _has_word(msg, ('help', 'feature', 'can you')):
         return (

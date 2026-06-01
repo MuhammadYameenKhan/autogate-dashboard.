@@ -29,6 +29,15 @@ PARKING POLICY
 - Faculty and staff vehicles must be registered with plate number, owner name, and department.
 - Students may book slots in advance for a date and time window; overlapping bookings are rejected.
 
+PARKING PENALTIES AND VIOLATIONS
+- Unauthorized parking (no permit / wrong zone): first offense warning; repeat offense RM 50 fine.
+- Overstaying booked slot by more than 30 minutes: RM 20 per hour (capped at RM 100 per day).
+- Parking in faculty/staff zones without authorization: RM 75 fine and possible towing.
+- Blocking gate lanes or fire routes: immediate RM 200 fine and vehicle may be towed.
+- Repeated unknown-plate entries (anomaly records): access suspended until vehicle is registered with admin.
+- Fines are logged by security; pay at the campus transport office within 14 days to avoid further penalties.
+- Appeal: submit plate number, date, and reason to security@campus.edu within 7 days of the notice.
+
 GATE OPERATIONS
 - Normal mode: LPR detects plate → backend logs entry/exit → gate opens for authorized vehicles.
 - Emergency stop: admin can halt gate movement from the dashboard; reset restores normal operation.

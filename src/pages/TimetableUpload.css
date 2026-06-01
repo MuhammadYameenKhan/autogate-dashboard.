@@ -35,6 +35,32 @@
   line-height: 1.6;
 }
 
+.raw-ocr-details {
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.raw-ocr-details summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.raw-ocr-text {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 .upload-area {
   border: 2px dashed var(--border-color);
   border-radius: 0.75rem;

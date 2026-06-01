@@ -215,7 +215,11 @@ export const apiService = {
 
   // Chatbot
   sendChatbotMessage: async (message: string): Promise<ChatbotMessageResponse> => {
-    return unwrap(apiClient.post<ChatbotMessageResponse>('/chatbot/message', { message }))
+    return unwrap(apiClient.post<ChatbotMessageResponse>(
+      '/chatbot/message',
+      { message },
+      { timeout: 15000 },
+    ))
   },
 
   // Emergency Stop

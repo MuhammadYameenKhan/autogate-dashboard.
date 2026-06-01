@@ -6,46 +6,61 @@ Frontend pages: TimetableUpload.tsx
 import os
 import json
 import uuid
+import logging
 import requests
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
 from ..models import Timetable
 
+logger = logging.getLogger(__name__)
 timetable_bp = Blueprint('timetable', __name__)
 
 
-def _extract_schedule_from_image(filepath: str) -> dict:
-    """
-    Call LPR/OCR service to extract timetable text, then parse it.
-    Falls back to a demo schedule if service unavailable.
-    """
+def _extract_via_lpr_service(filepath: str) -> dict | None:
+    """Optional: delegate to LPR microservice if running."""
     lpr_url = os.getenv('LPR_SERVICE_URL', 'http://localhost:5001')
     try:
         with open(filepath, 'rb') as f:
             resp = requests.post(
                 f'{lpr_url}/timetable/extract',
                 files={'image': f},
-                timeout=15
+                timeout=15,
             )
         if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
+            data = resp.json()
+            if data.get('classes') or data.get('rawText'):
+                return data
+    except Exception as exc:
+        logger.debug('LPR timetable extract unavailable: %s', exc)
+    return None
 
-    # Fallback: return a realistic demo schedule
-    return {
-        'classes': [
-            {'day': 'Monday',    'time': '08:00 - 09:30', 'building': 'A', 'course': 'Data Structures'},
-            {'day': 'Monday',    'time': '11:00 - 12:30', 'building': 'B', 'course': 'Database Systems'},
-            {'day': 'Tuesday',   'time': '09:00 - 10:30', 'building': 'C', 'course': 'Software Engineering'},
-            {'day': 'Wednesday', 'time': '08:00 - 09:30', 'building': 'A', 'course': 'Data Structures'},
-            {'day': 'Wednesday', 'time': '14:00 - 15:30', 'building': 'D', 'course': 'Computer Networks'},
-            {'day': 'Thursday',  'time': '09:00 - 10:30', 'building': 'C', 'course': 'Software Engineering'},
-            {'day': 'Friday',    'time': '11:00 - 12:30', 'building': 'B', 'course': 'Database Systems'},
-        ],
-        'rawText': 'Extracted from uploaded timetable image.'
-    }
+
+def _extract_schedule_from_image(filepath: str) -> dict:
+    """
+    Extract schedule from uploaded timetable image using OCR.
+    Tries local Tesseract first, then optional LPR service.
+    """
+    from ..services.timetable_ocr import extract_schedule_from_image
+
+    try:
+        return extract_schedule_from_image(filepath)
+    except ImportError:
+        logger.warning('OCR dependencies missing (pytesseract/opencv)')
+    except RuntimeError as exc:
+        logger.warning('Local OCR failed: %s', exc)
+    except Exception as exc:
+        logger.warning('Local OCR error: %s', exc)
+
+    lpr_result = _extract_via_lpr_service(filepath)
+    if lpr_result:
+        return lpr_result
+
+    raise RuntimeError(
+        'Could not extract text from the timetable image. '
+        'Ensure Tesseract is installed (brew install tesseract) and '
+        'OCR packages are installed (pip install pytesseract opencv-python-headless Pillow).'
+    )
 
 
 @timetable_bp.route('/extract', methods=['POST'])
@@ -65,16 +80,31 @@ def extract_timetable():
 
     try:
         extracted = _extract_schedule_from_image(filepath)
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 422
     finally:
         try:
             os.remove(filepath)
         except OSError:
             pass
 
+    classes = extracted.get('classes', [])
+    raw_text = extracted.get('rawText', '')
+
+    if not classes:
+        return jsonify({
+            'error': (
+                'No classes could be parsed from the image. '
+                'Try a clearer photo with readable day, time, and room labels.'
+            ),
+            'classes': [],
+            'rawText': raw_text,
+        }), 422
+
     # Frontend reads: response.classes (array), response.rawText
     return jsonify({
-        'classes': extracted.get('classes', []),
-        'rawText': extracted.get('rawText', ''),
+        'classes': classes,
+        'rawText': raw_text,
     }), 200
 
 

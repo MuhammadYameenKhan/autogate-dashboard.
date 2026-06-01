@@ -21,6 +21,11 @@ prophet>=1.1.5         # Facebook Prophet — comment out if not needed initiall
 requests>=2.31.0
 python-dotenv>=1.0.0
 
+# ── Timetable OCR ─────────────────────────────────────────────────────────────
+pytesseract>=0.3.10
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+
 # ── Chatbot / Knowledge Base (RAG) ───────────────────────────────────────────
 google-generativeai>=0.8.0
 langchain>=0.3.0
