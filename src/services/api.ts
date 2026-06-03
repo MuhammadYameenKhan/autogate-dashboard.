@@ -64,6 +64,20 @@ export interface LiveOcrResponse {
   confidence: number
 }
 
+export interface ParkingEventResponse {
+  status: 'allowed' | 'denied' | 'unknown'
+  log_id: number
+  vehicle: unknown | null
+}
+
+export interface OfflineImportResponse {
+  plateNumber: string
+  confidence: number
+  status: 'allowed' | 'denied' | 'unknown'
+  logId: number
+  vehicle: unknown | null
+}
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -76,8 +90,8 @@ const isJwtLike = (token: string | null) => {
 }
 
 // Response interceptor already returns response.data; do not read .data again.
-const unwrap = async <T>(request: Promise<T>): Promise<T> => {
-  return request
+const unwrap = async <T>(request: Promise<unknown>): Promise<T> => {
+  return request as Promise<T>
 }
 
 // Request interceptor for adding auth tokens
@@ -117,17 +131,17 @@ apiClient.interceptors.response.use(
 export const apiService = {
   // Dashboard
   getDashboardStats: async (): Promise<DashboardStats> => {
-    return unwrap(apiClient.get<DashboardStats>('/dashboard/stats'))
+    return unwrap<DashboardStats>(apiClient.get<DashboardStats>('/dashboard/stats'))
   },
 
   // Parking Availability
   getParkingAvailability: async (): Promise<{ totalCapacity: number; occupied: number; available: number; occupancyPercentage: number; trend: string; lastUpdated: string }> => {
-    return unwrap(apiClient.get('/parking/availability'))
+    return unwrap<{ totalCapacity: number; occupied: number; available: number; occupancyPercentage: number; trend: string; lastUpdated: string }>(apiClient.get('/parking/availability'))
   },
 
   // Currently Parked
   getCurrentlyParked: async (): Promise<GetCurrentlyParkedResponse> => {
-    return unwrap(apiClient.get<GetCurrentlyParkedResponse>('/parking/currently-parked'))
+    return unwrap<GetCurrentlyParkedResponse>(apiClient.get<GetCurrentlyParkedResponse>('/parking/currently-parked'))
   },
 
   // Logs
@@ -138,11 +152,11 @@ export const apiService = {
     dateTo?: string
     status?: string
   }): Promise<GetLogsResponse> => {
-    return unwrap(apiClient.get<GetLogsResponse>('/logs', { params: filters }))
+    return unwrap<GetLogsResponse>(apiClient.get<GetLogsResponse>('/logs', { params: filters }))
   },
 
   exportLogs: async (): Promise<Blob | string> => {
-    return unwrap(apiClient.get('/logs/export', {
+    return unwrap<Blob | string>(apiClient.get('/logs/export', {
       responseType: 'blob',
       headers: {
         Accept: 'text/csv',
@@ -152,7 +166,7 @@ export const apiService = {
 
   // Vehicle Management
   getVehicles: async (): Promise<unknown[]> => {
-    return unwrap(apiClient.get<unknown[]>('/vehicles'))
+    return unwrap<unknown[]>(apiClient.get<unknown[]>('/vehicles'))
   },
 
   createVehicle: async (data: {
@@ -163,7 +177,7 @@ export const apiService = {
     vehicleType: string
     status: string
   }) => {
-    return unwrap(apiClient.post('/vehicles', data))
+    return unwrap<unknown>(apiClient.post('/vehicles', data))
   },
 
   updateVehicle: async (id: string, data: {
@@ -174,29 +188,40 @@ export const apiService = {
     vehicleType: string
     status: string
   }) => {
-    return unwrap(apiClient.put(`/vehicles/${id}`, data))
+    return unwrap<unknown>(apiClient.put(`/vehicles/${id}`, data))
   },
 
   deleteVehicle: async (id: string) => {
-    return unwrap(apiClient.delete(`/vehicles/${id}`))
+    return unwrap<unknown>(apiClient.delete(`/vehicles/${id}`))
   },
 
   // Forecasting
   getForecast: async (period: '24h' | '48h' | '72h'): Promise<unknown[]> => {
-    return unwrap(apiClient.get<unknown[]>('/forecast', { params: { period } }))
+    return unwrap<unknown[]>(apiClient.get<unknown[]>('/forecast', { params: { period } }))
+  },
+
+  // Parking event logging
+  logParkingEvent: async (data: {
+    plate_number: string
+    event_type?: 'entry' | 'exit'
+    gate?: string
+    confidence?: number
+    image_path?: string
+  }): Promise<ParkingEventResponse> => {
+    return unwrap<ParkingEventResponse>(apiClient.post<ParkingEventResponse>('/parking/event', data))
   },
 
   // Anomaly Detection
   getAnomalies: async (filter: 'all' | 'active' | 'resolved'): Promise<unknown[]> => {
-    return unwrap(apiClient.get<unknown[]>('/anomalies', { params: { filter } }))
+    return unwrap<unknown[]>(apiClient.get<unknown[]>('/anomalies', { params: { filter } }))
   },
 
   resolveAnomaly: async (id: string) => {
-    return unwrap(apiClient.post(`/anomalies/${id}/resolve`))
+    return unwrap<unknown>(apiClient.post(`/anomalies/${id}/resolve`))
   },
 
   markAnomalyFalsePositive: async (id: string) => {
-    return unwrap(apiClient.post(`/anomalies/${id}/false-positive`))
+    return unwrap<unknown>(apiClient.post(`/anomalies/${id}/false-positive`))
   },
 
   // Offline Log Import
@@ -204,14 +229,18 @@ export const apiService = {
     eventType: 'entry' | 'exit'
     timestamp: string
     gateId: string
-  }) => {
+    plateNumber?: string
+  }): Promise<OfflineImportResponse> => {
     const formData = new FormData()
     formData.append('image', file)
     formData.append('eventType', metadata.eventType)
     formData.append('timestamp', metadata.timestamp)
     formData.append('gateId', metadata.gateId)
+    if (metadata.plateNumber) {
+      formData.append('plateNumber', metadata.plateNumber)
+    }
 
-    return unwrap(apiClient.post('/ocr/offline', formData, {
+    return unwrap<OfflineImportResponse>(apiClient.post<OfflineImportResponse>('/ocr/offline', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -223,16 +252,16 @@ export const apiService = {
     const formData = new FormData()
     formData.append('image', file)
 
-    return apiClient.post('/ocr/live', formData, {
+    return unwrap<LiveOcrResponse>(apiClient.post<LiveOcrResponse>('/ocr/live', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-    })
+    }))
   },
 
   // Chatbot
   sendChatbotMessage: async (message: string): Promise<ChatbotMessageResponse> => {
-    return unwrap(apiClient.post<ChatbotMessageResponse>(
+    return unwrap<ChatbotMessageResponse>(apiClient.post<ChatbotMessageResponse>(
       '/chatbot/message',
       { message },
       { timeout: 15000 },
@@ -241,25 +270,25 @@ export const apiService = {
 
   // Emergency Stop
   emergencyStop: async () => {
-    return unwrap(apiClient.post('/gate/emergency-stop'))
+    return unwrap<unknown>(apiClient.post('/gate/emergency-stop'))
   },
 
   resetEmergencyStop: async () => {
-    return unwrap(apiClient.post('/gate/reset-emergency-stop'))
+    return unwrap<unknown>(apiClient.post('/gate/reset-emergency-stop'))
   },
 
   // Authentication
   login: async (username: string, password: string): Promise<AuthResponse> => {
-    return unwrap(apiClient.post<AuthResponse>('/auth/login', { username, password }))
+    return unwrap<AuthResponse>(apiClient.post<AuthResponse>('/auth/login', { username, password }))
   },
 
   signup: async (username: string, email: string, password: string, userId: string): Promise<AuthResponse> => {
-    return unwrap(apiClient.post<AuthResponse>('/auth/signup', { username, email, password, userId }))
+    return unwrap<AuthResponse>(apiClient.post<AuthResponse>('/auth/signup', { username, email, password, userId }))
   },
 
   // Parking Booking
   getAvailableSlots: async (params: { date: string, time: string }): Promise<unknown[]> => {
-    return unwrap(apiClient.get<unknown[]>('/parking/slots/available', { params }))
+    return unwrap<unknown[]>(apiClient.get<unknown[]>('/parking/slots/available', { params }))
   },
 
   bookParkingSlot: async (data: {
@@ -269,19 +298,19 @@ export const apiService = {
     duration: number
     expiryTime: string
   }) => {
-    return unwrap(apiClient.post('/parking/book', data))
+    return unwrap<unknown>(apiClient.post('/parking/book', data))
   },
 
   getMyBookings: async () => {
-    return unwrap(apiClient.get<unknown[]>('/parking/bookings/my'))
+    return unwrap<unknown[]>(apiClient.get<unknown[]>('/parking/bookings/my'))
   },
 
   cancelBooking: async (bookingId: string) => {
-    return unwrap(apiClient.post(`/parking/bookings/${bookingId}/cancel`))
+    return unwrap<unknown>(apiClient.post(`/parking/bookings/${bookingId}/cancel`))
   },
 
   getSuggestedParkingSlot: async (params: { date: string, time: string }): Promise<unknown | null> => {
-    return unwrap(apiClient.get<unknown | null>('/parking/suggested', { params }))
+    return unwrap<unknown | null>(apiClient.get<unknown | null>('/parking/suggested', { params }))
   },
 
   // Timetable Management
@@ -289,7 +318,7 @@ export const apiService = {
     const formData = new FormData()
     formData.append('image', file)
 
-    return unwrap(apiClient.post('/timetable/extract', formData, {
+    return unwrap<unknown>(apiClient.post('/timetable/extract', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -305,7 +334,7 @@ export const apiService = {
     }>
     rawText: string
   }) => {
-    return unwrap(apiClient.post('/timetable/save', schedule))
+    return unwrap<unknown>(apiClient.post('/timetable/save', schedule))
   },
 
   updateTimetable: async (schedule: {
@@ -317,11 +346,11 @@ export const apiService = {
     }>
     rawText: string
   }) => {
-    return unwrap(apiClient.put('/timetable/update', schedule))
+    return unwrap<unknown>(apiClient.put('/timetable/update', schedule))
   },
 
   getMyTimetable: async () => {
-    return unwrap(apiClient.get<unknown>('/timetable/my'))
+    return unwrap<unknown>(apiClient.get<unknown>('/timetable/my'))
   },
 }
 

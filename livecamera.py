@@ -14,7 +14,8 @@ VERSION = "1"
 FLASK_API_URL = "http://localhost:5000/api/parking/event"
 
 CLIENT = InferenceHTTPClient(
-    api_url="http://localhost:9001",
+    # api_url="http://localhost:9001",
+    api_url="https://detect.roboflow.com",
     api_key=ROBOFLOW_API_KEY
 )
 

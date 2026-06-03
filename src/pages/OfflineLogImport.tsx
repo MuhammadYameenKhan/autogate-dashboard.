@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Upload, Image as ImageIcon, CheckCircle, XCircle } from 'lucide-react'
+import { Upload, CheckCircle, XCircle } from 'lucide-react'
 import './OfflineLogImport.css'
 import { apiService } from '../services/api'
 
@@ -9,7 +9,8 @@ const OfflineLogImport = () => {
   const [formData, setFormData] = useState({
     eventType: 'entry' as 'entry' | 'exit',
     timestamp: new Date().toISOString().slice(0, 16),
-    gateId: 'gate1'
+    gateId: 'gate1',
+    plateNumber: ''
   })
   const [processing, setProcessing] = useState(false)
   const [result, setResult] = useState<{
@@ -47,7 +48,10 @@ const OfflineLogImport = () => {
     setResult(null)
 
     try {
-      const response = await apiService.uploadOfflineImage(selectedFile, formData)
+      const response = await apiService.uploadOfflineImage(selectedFile, {
+        ...formData,
+        plateNumber: formData.plateNumber.trim() || undefined,
+      })
       setResult({
         success: true,
         plateNumber: response.plateNumber,
@@ -60,12 +64,14 @@ const OfflineLogImport = () => {
       setFormData({
         eventType: 'entry',
         timestamp: new Date().toISOString().slice(0, 16),
-        gateId: 'gate1'
+        gateId: 'gate1',
+        plateNumber: ''
       })
     } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.response?.data?.msg || error.message || 'Failed to process image. Please try again.'
       setResult({
         success: false,
-        message: error.message || 'Failed to process image. Please try again.'
+        message: errorMessage
       })
     } finally {
       setProcessing(false)
@@ -116,6 +122,16 @@ const OfflineLogImport = () => {
             </div>
 
             <div className="form-section">
+              <div className="form-group">
+                <label>License Plate (optional)</label>
+                <input
+                  type="text"
+                  value={formData.plateNumber}
+                  onChange={(e) => setFormData({ ...formData, plateNumber: e.target.value.toUpperCase() })}
+                  placeholder="Enter plate if OCR fails"
+                />
+              </div>
+
               <div className="form-group">
                 <label>Event Type *</label>
                 <select
@@ -193,7 +209,7 @@ const OfflineLogImport = () => {
             <li>The system will extract the plate number and create a log entry</li>
           </ul>
           <div className="info-note">
-            <strong>Note:</strong> This feature is for offline log recovery when real-time 
+            <strong>Note:</strong> This feature is for offline log recovery when real-time
             processing was unavailable (e.g., system downtime, camera failure).
           </div>
         </div>

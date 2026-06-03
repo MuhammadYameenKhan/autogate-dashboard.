@@ -5,6 +5,7 @@ Frontend sends: image (file), eventType, timestamp, gateId (FormData)
 import os
 import uuid
 import requests
+from requests.exceptions import RequestException
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required
 from ..extensions import db
@@ -105,8 +106,12 @@ def offline_import():
                     lpr_data     = resp.json()
                     plate_number = lpr_data.get('plate_number', '').upper().strip()
                     confidence   = lpr_data.get('confidence', 0.0)
+            except RequestException:
+                return jsonify({
+                    'error': 'License plate service is unavailable. Enter a plate number manually or try again later.'
+                }), 503
             except Exception as e:
-                return jsonify({'error': f'LPR service error: {str(e)}'}), 502
+                return jsonify({'error': f'Unexpected OCR error: {str(e)}'}), 502
 
         if not plate_number:
             return jsonify({'error': 'Could not detect plate number'}), 422

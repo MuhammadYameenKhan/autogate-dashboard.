@@ -58,6 +58,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(response.user)
       navigate('/dashboard')
     } catch (error: any) {
+      // Log full error for debugging network/auth issues (temporary)
+      // This will surface network errors and axios response details in the browser console.
+      // Remove or reduce verbosity once issue is resolved.
+      // eslint-disable-next-line no-console
+      console.error('Auth login error:', error)
       const msg = error.response?.data?.msg ||
         error.response?.data?.error ||
         error.message
