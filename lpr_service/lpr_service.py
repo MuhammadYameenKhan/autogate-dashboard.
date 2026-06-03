@@ -125,7 +125,7 @@ def detect_plate_yolo(image: np.ndarray):
             crop = image[y1p:y2p, x1p:x2p]
             if crop.size > 0:
                 plates.append((crop, conf))
-    return plates if plates else [(image, 0.3)]
+    return plates 
 
 
 _PLATE_RE = re.compile(r'^[A-Z0-9]{4,10}$')
@@ -237,21 +237,16 @@ def ocr_plate(plate_img: np.ndarray) -> str:
 
 
 def recognize_plate_from_image(image: np.ndarray):
-    """Full pipeline: detect → OCR → return best plate."""
     plates = detect_plate_yolo(image)
-
-    best_plate = ''
-    best_conf  = 0.0
-
+    best_plate, best_conf = '', 0.0
     for crop, det_conf in plates:
         text = ocr_plate(crop)
         if len(text) >= 4:
-            # Combined confidence
-            conf = det_conf * 0.7 + 0.3
+            _, ocr_score = _score_plate_text(text)
+            ocr_conf = min(ocr_score / 4.0, 1.0)  # normalise 0–4 score to 0–1
+            conf = det_conf * 0.7 + ocr_conf * 0.3
             if conf > best_conf:
-                best_plate = text
-                best_conf  = conf
-
+                best_plate, best_conf = text, conf
     return best_plate, best_conf
 
 

@@ -30,6 +30,8 @@ const Dashboard = () => {
   const cameraFeedRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const liveOcrTimerRef = useRef<number | null>(null)
+  const lastSavedPlateRef = useRef<string | null>(null)
+  const lastSavedAtRef = useRef<number>(0)
 
   const quickActions = [
     { label: 'View All Logs', path: '/logs' },
@@ -64,6 +66,8 @@ const Dashboard = () => {
       stopLiveOcr()
       setDetectedPlate(null)
       setDetectedConfidence(null)
+      lastSavedPlateRef.current = null
+      lastSavedAtRef.current = 0
       return
     }
 
@@ -154,8 +158,29 @@ const Dashboard = () => {
 
         inFlight = true
         const res = await apiService.liveRecognize(frameFile)
-        setDetectedPlate(res.plateNumber)
+        const plateNumber = res.plateNumber.trim().toUpperCase()
+        setDetectedPlate(plateNumber)
         setDetectedConfidence(res.confidence)
+
+        const now = Date.now()
+        const isNewPlate = lastSavedPlateRef.current !== plateNumber
+        const cooldownExpired = now - lastSavedAtRef.current > 10000
+
+        if (plateNumber && (isNewPlate || cooldownExpired)) {
+          lastSavedPlateRef.current = plateNumber
+          lastSavedAtRef.current = now
+
+          try {
+            await apiService.logParkingEvent({
+              plate_number: plateNumber,
+              event_type: 'entry',
+              gate: 'main',
+              confidence: res.confidence,
+            })
+          } catch (saveError) {
+            console.error('Failed to save detected plate:', saveError)
+          }
+        }
       } catch (error) {
         // Keep UI running; OCR may fail intermittently.
         console.error('Live OCR failed:', error)
